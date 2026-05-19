@@ -27,9 +27,9 @@
     "validations"
   ],
   "devDependencies": {
-    "discord.js": "^14.7.1",
-    "tsup": "^8.3.5",
+    "discord.js": "^14.26.4",
+    "tsup": "^8.5.1",
     "typescript": "^4.9.5",
-    "winston": "^3.8.2"
+    "winston": "^3.19.0"
   }
 }
