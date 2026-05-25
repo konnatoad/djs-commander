@@ -1,5 +1,3 @@
-**This library is no longer maintained. Use [CommandKit](https://github.com/notunderctrl/commandkit) instead**
-
 # DJS-Commander: A Library for Discord.js Projects
 
 DJS-Commander is an easy-to-use JavaScript library that simplifies the process of handling commands, events, and validations in your Discord.js projects.
@@ -69,8 +67,8 @@ commands/
 ├── command1.js
 ├── command2.js
 └── category/
-	├── command3.js
-	└── commands4.js
+ ├── command3.js
+ └── commands4.js
 ```
 
 Any file inside the commands directory will be considered a command file, so make sure it properly exports an object. Like this:
@@ -103,15 +101,15 @@ DJS-Commander assumes a specific file structure for your events. Here's an examp
 ```shell
 events/
 ├── ready/
-|	├── console-log.js
-|	└── webhook.js
+| ├── console-log.js
+| └── webhook.js
 |
 └── messageCreate/
-	├── auto-mod/
-	|	├── delete-swear-words.js
-	|	└── anti-raid.js
-	|
-	└── chat-bot.js
+ ├── auto-mod/
+ | ├── delete-swear-words.js
+ | └── anti-raid.js
+ |
+ └── chat-bot.js
 ```
 
 Make sure each file exports a default function. Like this:
