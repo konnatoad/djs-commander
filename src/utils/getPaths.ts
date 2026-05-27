@@ -1,5 +1,5 @@
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
 
 export function getFilePaths(directory?: string, nesting?: boolean): string[] {
   let filePaths: string[] = [];

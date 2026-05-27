@@ -1,4 +1,4 @@
-const { getFilePaths } = require('./getPaths');
+import { getFilePaths } from './getPaths';
 
 export function buildCommandTree(commandsDir?: string) {
   const commandTree = [];
