@@ -1,3 +1,4 @@
+import path from 'path';
 import { Client } from 'discord.js';
 import { Logger } from 'winston';
 import { LocalCommand } from './dev';
@@ -80,7 +81,7 @@ export class CommandHandler {
     const eventPaths = getFolderPaths(this._eventsPath);
 
     for (const eventPath of eventPaths) {
-      const eventName = eventPath.replace(/\\/g, '/').split('/').pop();
+      const eventName = path.basename(eventPath);
       const eventFuncPaths = getFilePaths(eventPath, true);
       eventFuncPaths.sort();
 
