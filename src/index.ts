@@ -1,5 +1,5 @@
 import path from 'path';
-import { Client } from 'discord.js';
+import { Client, ChatInputCommandInteraction } from 'discord.js';
 import { Logger } from 'winston';
 import { LocalCommand } from './dev';
 import { getFolderPaths, getFilePaths } from './utils/getPaths';
@@ -12,7 +12,7 @@ export class CommandHandler {
   private readonly _eventsPath: string | undefined;
   private readonly _validationsPath: string | undefined;
   private readonly _testServer: string | undefined;
-  private readonly _validationFuncs: Array<Function>;
+  private readonly _validationFuncs: Array<(interaction: ChatInputCommandInteraction, command: LocalCommand, handler: CommandHandler, client: Client) => unknown>;
   private readonly _logger: Logger | undefined;
   private _commands: Array<LocalCommand>;
 
