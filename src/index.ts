@@ -55,6 +55,7 @@ export class CommandHandler {
         this._registerSlashCommands();
         this._validationsPath && this._validationsInit();
         this._handleCommands();
+        this._handleAutocomplete();
       });
     }
 
@@ -143,6 +144,21 @@ export class CommandHandler {
             handler: this,
           });
         }
+      }
+    });
+  }
+
+  _handleAutocomplete() {
+    this._client.on('interactionCreate', async (interaction) => {
+      if (!interaction.isAutocomplete()) return;
+
+      const command = this._commands.find((cmd) => cmd.name === interaction.commandName) as any;
+      if (command?.autocomplete) {
+        await command.autocomplete({
+          interaction,
+          client: this._client,
+          handler: this,
+        });
       }
     });
   }
