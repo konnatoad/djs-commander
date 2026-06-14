@@ -1,0 +1,370 @@
+"use strict";
+var __create = Object.create;
+var __defProp = Object.defineProperty;
+var __defProps = Object.defineProperties;
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+var __getOwnPropDescs = Object.getOwnPropertyDescriptors;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getOwnPropSymbols = Object.getOwnPropertySymbols;
+var __getProtoOf = Object.getPrototypeOf;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __propIsEnum = Object.prototype.propertyIsEnumerable;
+var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
+var __spreadValues = (a, b) => {
+  for (var prop in b || (b = {}))
+    if (__hasOwnProp.call(b, prop))
+      __defNormalProp(a, prop, b[prop]);
+  if (__getOwnPropSymbols)
+    for (var prop of __getOwnPropSymbols(b)) {
+      if (__propIsEnum.call(b, prop))
+        __defNormalProp(a, prop, b[prop]);
+    }
+  return a;
+};
+var __spreadProps = (a, b) => __defProps(a, __getOwnPropDescs(b));
+var __objRest = (source, exclude) => {
+  var target = {};
+  for (var prop in source)
+    if (__hasOwnProp.call(source, prop) && exclude.indexOf(prop) < 0)
+      target[prop] = source[prop];
+  if (source != null && __getOwnPropSymbols)
+    for (var prop of __getOwnPropSymbols(source)) {
+      if (exclude.indexOf(prop) < 0 && __propIsEnum.call(source, prop))
+        target[prop] = source[prop];
+    }
+  return target;
+};
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
+};
+var __copyProps = (to, from, except, desc) => {
+  if (from && typeof from === "object" || typeof from === "function") {
+    for (let key of __getOwnPropNames(from))
+      if (!__hasOwnProp.call(to, key) && key !== except)
+        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+  }
+  return to;
+};
+var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+  // If the importer is in node compatibility mode or this is not an ESM
+  // file that has been converted to a CommonJS file using a Babel-
+  // compatible transform (i.e. "__esModule" has not been set), then set
+  // "default" to the CommonJS "module.exports" for node compatibility.
+  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+  mod
+));
+var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+var __async = (__this, __arguments, generator) => {
+  return new Promise((resolve, reject) => {
+    var fulfilled = (value) => {
+      try {
+        step(generator.next(value));
+      } catch (e) {
+        reject(e);
+      }
+    };
+    var rejected = (value) => {
+      try {
+        step(generator.throw(value));
+      } catch (e) {
+        reject(e);
+      }
+    };
+    var step = (x) => x.done ? resolve(x.value) : Promise.resolve(x.value).then(fulfilled, rejected);
+    step((generator = generator.apply(__this, __arguments)).next());
+  });
+};
+
+// src/index.ts
+var index_exports = {};
+__export(index_exports, {
+  CommandHandler: () => CommandHandler
+});
+module.exports = __toCommonJS(index_exports);
+var import_path2 = __toESM(require("path"));
+
+// src/utils/getPaths.ts
+var import_fs = __toESM(require("fs"));
+var import_path = __toESM(require("path"));
+function getFilePaths(directory, nesting) {
+  let filePaths = [];
+  if (!directory) return filePaths;
+  const files = import_fs.default.readdirSync(directory, { withFileTypes: true });
+  for (const file of files) {
+    const filePath = import_path.default.join(directory, file.name);
+    if (file.isFile()) {
+      filePaths.push(filePath);
+    }
+    if (nesting && file.isDirectory()) {
+      filePaths = [...filePaths, ...getFilePaths(filePath, true)];
+    }
+  }
+  return filePaths;
+}
+function getFolderPaths(directory, nesting) {
+  let folderPaths = [];
+  if (!directory) return folderPaths;
+  const folders = import_fs.default.readdirSync(directory, { withFileTypes: true });
+  for (const folder of folders) {
+    const folderPath = import_path.default.join(directory, folder.name);
+    if (folder.isDirectory()) {
+      folderPaths.push(folderPath);
+      if (nesting) {
+        folderPaths = [...folderPaths, ...getFolderPaths(folderPath, true)];
+      }
+    }
+  }
+  return folderPaths;
+}
+
+// src/utils/buildCommandTree.ts
+function buildCommandTree(commandsDir) {
+  const commandTree = [];
+  if (!commandsDir) return [];
+  const commandFilePaths = getFilePaths(commandsDir, true);
+  for (const commandFilePath of commandFilePaths) {
+    let _a = require(commandFilePath), { data, run, deleted } = _a, rest = __objRest(_a, ["data", "run", "deleted"]);
+    if (!data) throw new Error(`File ${commandFilePath} must export "data".`);
+    if (!run) throw new Error(`File ${commandFilePath} must export a "run" function.`);
+    if (!data.name) throw new Error(`File ${commandFilePath} must have a command name.`);
+    if (!data.description) throw new Error(`File ${commandFilePath} must have a command description.`);
+    try {
+      data = data.toJSON();
+    } catch (error) {
+    }
+    commandTree.push(__spreadProps(__spreadValues(__spreadValues({}, data), rest), {
+      deleted,
+      run
+    }));
+  }
+  return commandTree;
+}
+
+// src/utils/getAppCommands.ts
+function getAppCommands(client, guildId) {
+  return __async(this, null, function* () {
+    let applicationCommands;
+    if (guildId) {
+      const guild = yield client.guilds.fetch(guildId);
+      applicationCommands = guild.commands;
+    } else {
+      applicationCommands = yield client.application.commands;
+    }
+    yield applicationCommands.fetch();
+    return applicationCommands;
+  });
+}
+
+// src/utils/areCommandsDifferent.ts
+function areCommandsDifferent(existingCommand, localCommand) {
+  var _a, _b;
+  if (localCommand.description !== existingCommand.description || (((_a = localCommand.options) == null ? void 0 : _a.length) || 0) !== ((_b = existingCommand.options) == null ? void 0 : _b.length)) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
+// src/utils/registerCommands.ts
+function registerCommands(_0) {
+  return __async(this, arguments, function* ({
+    client,
+    commands: localCommands,
+    testServer,
+    logger
+  }) {
+    const applicationCommands = yield getAppCommands(client, testServer);
+    for (const localCommand of localCommands) {
+      const {
+        name,
+        name_localizations,
+        description,
+        description_localizations,
+        default_member_permissions,
+        dm_permission,
+        options
+      } = localCommand;
+      const existingCommand = applicationCommands.cache.find((cmd) => cmd.name === name);
+      if (existingCommand) {
+        if (localCommand.deleted) {
+          yield applicationCommands.delete(existingCommand.id);
+          let message = `\u{1F5D1} Deleted command "${name}".`;
+          if (logger) {
+            logger.info(message);
+          } else {
+            console.log(message);
+          }
+          continue;
+        }
+        if (areCommandsDifferent(existingCommand, localCommand)) {
+          yield applicationCommands.edit(existingCommand.id, {
+            description,
+            options
+          });
+          let message = `\u{1F501} Edited command "${name}".`;
+          if (logger) {
+            logger.info(message);
+          } else {
+            console.log(message);
+          }
+        }
+      } else {
+        if (localCommand.deleted) {
+          let message2 = `\u23E9 Skipping registering command "${name}" as it's set to delete.`;
+          if (logger) {
+            logger.info(message2);
+          } else {
+            console.log(message2);
+          }
+          continue;
+        }
+        yield applicationCommands.create({
+          name,
+          name_localizations,
+          description,
+          description_localizations,
+          default_member_permissions,
+          dm_permission,
+          options
+        });
+        let message = `\u2705 Registered command "${name}".`;
+        if (logger) {
+          logger.info(message);
+        } else {
+          console.log(message);
+        }
+      }
+    }
+  });
+}
+
+// src/index.ts
+var CommandHandler = class {
+  constructor({
+    client,
+    commandsPath,
+    eventsPath,
+    validationsPath,
+    testServer,
+    logger
+  }) {
+    if (!client)
+      throw new Error('Property "client" is required when instantiating CommandHandler.');
+    this._client = client;
+    this._commandsPath = commandsPath;
+    this._eventsPath = eventsPath;
+    this._validationsPath = validationsPath;
+    this._testServer = testServer;
+    this._commands = [];
+    this._validationFuncs = [];
+    this._logger = logger;
+    if (this._validationsPath && !commandsPath) {
+      throw new Error(
+        'Command validations are only available in the presence of a commands path. Either add "commandsPath" or remove "validationsPath"'
+      );
+    }
+    if (this._commandsPath) {
+      this._commandsInit();
+      this._client.once("clientReady", () => {
+        this._registerSlashCommands();
+        this._validationsPath && this._validationsInit();
+        this._handleCommands();
+        this._handleAutocomplete();
+      });
+    }
+    if (this._eventsPath) {
+      this._eventsInit();
+    }
+  }
+  _commandsInit() {
+    let commands = buildCommandTree(this._commandsPath);
+    this._commands = commands;
+  }
+  _registerSlashCommands() {
+    registerCommands({
+      client: this._client,
+      commands: this._commands,
+      testServer: this._testServer,
+      logger: this._logger
+    });
+  }
+  _eventsInit() {
+    const eventPaths = getFolderPaths(this._eventsPath);
+    for (const eventPath of eventPaths) {
+      const eventName = import_path2.default.basename(eventPath);
+      const eventFuncPaths = getFilePaths(eventPath, true);
+      eventFuncPaths.sort();
+      if (!eventName) continue;
+      this._client.on(eventName, (...arg) => __async(this, null, function* () {
+        for (const eventFuncPath of eventFuncPaths) {
+          const eventFunc = require(eventFuncPath);
+          const cantRunEvent = yield eventFunc(...arg, this._client, this);
+          if (cantRunEvent) break;
+        }
+      }));
+    }
+  }
+  _validationsInit() {
+    const validationFilePaths = getFilePaths(this._validationsPath);
+    validationFilePaths.sort();
+    for (const validationFilePath of validationFilePaths) {
+      const validationFunc = require(validationFilePath);
+      if (typeof validationFunc !== "function") {
+        throw new Error(`Validation file ${validationFilePath} must export a function by default.`);
+      }
+      this._validationFuncs.push(validationFunc);
+    }
+  }
+  _handleCommands() {
+    this._client.on("interactionCreate", (interaction) => __async(this, null, function* () {
+      if (!interaction.isChatInputCommand()) return;
+      const command = this._commands.find((cmd) => cmd.name === interaction.commandName);
+      if (command) {
+        if (this._validationFuncs.length) {
+          let canRun = true;
+          for (const validationFunc of this._validationFuncs) {
+            const cantRunCommand = yield validationFunc(interaction, command, this, this._client);
+            if (cantRunCommand) {
+              canRun = false;
+              break;
+            }
+          }
+          if (canRun) {
+            yield command.run({
+              interaction,
+              client: this._client,
+              handler: this
+            });
+          }
+        } else {
+          yield command.run({
+            interaction,
+            client: this._client,
+            handler: this
+          });
+        }
+      }
+    }));
+  }
+  _handleAutocomplete() {
+    this._client.on("interactionCreate", (interaction) => __async(this, null, function* () {
+      if (!interaction.isAutocomplete()) return;
+      const command = this._commands.find((cmd) => cmd.name === interaction.commandName);
+      if (command == null ? void 0 : command.autocomplete) {
+        yield command.autocomplete({
+          interaction,
+          client: this._client,
+          handler: this
+        });
+      }
+    }));
+  }
+  get commands() {
+    return this._commands;
+  }
+};
+// Annotate the CommonJS export names for ESM import in node:
+0 && (module.exports = {
+  CommandHandler
+});
