@@ -48,6 +48,9 @@ export async function registerCommands({
       if (areCommandsDifferent(existingCommand, localCommand)) {
         await applicationCommands.edit(existingCommand.id, {
           description,
+          description_localizations,
+          name_localizations,
+          default_member_permissions,
           options,
         });
 
