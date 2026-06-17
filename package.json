@@ -44,5 +44,8 @@
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
     "winston": "^3.19.0"
+  },
+  "resolutions": {
+    "esbuild": "0.28.1"
   }
 }
