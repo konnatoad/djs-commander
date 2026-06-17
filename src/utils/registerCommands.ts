@@ -24,7 +24,8 @@ export async function registerCommands({
       description,
       description_localizations,
       default_member_permissions,
-      dm_permission,
+      contexts,
+      integration_types,
       options,
     } = localCommand;
 
@@ -80,7 +81,8 @@ export async function registerCommands({
         description,
         description_localizations,
         default_member_permissions,
-        dm_permission,
+        contexts,
+        integration_types,
         options,
       });
 
