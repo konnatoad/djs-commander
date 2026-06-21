@@ -1,4 +1,5 @@
 import path from 'path';
+import { pathToFileURL } from 'url';
 import { Client, ChatInputCommandInteraction } from 'discord.js';
 import { Logger } from 'winston';
 import { LocalCommand } from './dev';
@@ -50,10 +51,10 @@ export class CommandHandler {
     }
 
     if (this._commandsPath) {
-      this._commandsInit();
-      this._client.once('clientReady', () => {
+      this._client.once('clientReady', async () => {
+        await this._commandsInit();
         this._registerSlashCommands();
-        this._validationsPath && this._validationsInit();
+        this._validationsPath && await this._validationsInit();
         this._handleCommands();
         this._handleAutocomplete();
       });
@@ -64,8 +65,8 @@ export class CommandHandler {
     }
   }
 
-  _commandsInit() {
-    let commands = buildCommandTree(this._commandsPath);
+  async _commandsInit() {
+    let commands = await buildCommandTree(this._commandsPath);
     this._commands = commands;
   }
 
@@ -90,7 +91,8 @@ export class CommandHandler {
 
       this._client.on(eventName, async (...arg) => {
         for (const eventFuncPath of eventFuncPaths) {
-          const eventFunc = require(eventFuncPath);
+          const imported = await import(pathToFileURL(eventFuncPath).href);
+          const eventFunc = imported.default ?? imported;
           const cantRunEvent = await eventFunc(...arg, this._client, this);
           if (cantRunEvent) break;
         }
@@ -98,12 +100,13 @@ export class CommandHandler {
     }
   }
 
-  _validationsInit() {
+  async _validationsInit() {
     const validationFilePaths = getFilePaths(this._validationsPath);
     validationFilePaths.sort();
 
     for (const validationFilePath of validationFilePaths) {
-      const validationFunc = require(validationFilePath);
+      const imported = await import(pathToFileURL(validationFilePath).href);
+      const validationFunc = imported.default ?? imported;
       if (typeof validationFunc !== 'function') {
         throw new Error(`Validation file ${validationFilePath} must export a function by default.`);
       }
