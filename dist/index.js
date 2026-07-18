@@ -83,6 +83,7 @@ __export(index_exports, {
 });
 module.exports = __toCommonJS(index_exports);
 var import_path2 = __toESM(require("path"));
+var import_url2 = require("url");
 
 // src/utils/getPaths.ts
 var import_fs = __toESM(require("fs"));
@@ -119,26 +120,32 @@ function getFolderPaths(directory, nesting) {
 }
 
 // src/utils/buildCommandTree.ts
+var import_url = require("url");
 function buildCommandTree(commandsDir) {
-  const commandTree = [];
-  if (!commandsDir) return [];
-  const commandFilePaths = getFilePaths(commandsDir, true);
-  for (const commandFilePath of commandFilePaths) {
-    let _a = require(commandFilePath), { data, run, deleted } = _a, rest = __objRest(_a, ["data", "run", "deleted"]);
-    if (!data) throw new Error(`File ${commandFilePath} must export "data".`);
-    if (!run) throw new Error(`File ${commandFilePath} must export a "run" function.`);
-    if (!data.name) throw new Error(`File ${commandFilePath} must have a command name.`);
-    if (!data.description) throw new Error(`File ${commandFilePath} must have a command description.`);
-    try {
-      data = data.toJSON();
-    } catch (error) {
+  return __async(this, null, function* () {
+    var _a;
+    const commandTree = [];
+    if (!commandsDir) return [];
+    const commandFilePaths = getFilePaths(commandsDir, true);
+    for (const commandFilePath of commandFilePaths) {
+      const imported = yield import((0, import_url.pathToFileURL)(commandFilePath).href);
+      const mod = (_a = imported.default) != null ? _a : imported;
+      let _b = mod, { data, run, deleted } = _b, rest = __objRest(_b, ["data", "run", "deleted"]);
+      if (!data) throw new Error(`File ${commandFilePath} must export "data".`);
+      if (!run) throw new Error(`File ${commandFilePath} must export a "run" function.`);
+      if (!data.name) throw new Error(`File ${commandFilePath} must have a command name.`);
+      if (!data.description) throw new Error(`File ${commandFilePath} must have a command description.`);
+      try {
+        data = data.toJSON();
+      } catch (error) {
+      }
+      commandTree.push(__spreadProps(__spreadValues(__spreadValues({}, data), rest), {
+        deleted,
+        run
+      }));
     }
-    commandTree.push(__spreadProps(__spreadValues(__spreadValues({}, data), rest), {
-      deleted,
-      run
-    }));
-  }
-  return commandTree;
+    return commandTree;
+  });
 }
 
 // src/utils/getAppCommands.ts
@@ -182,7 +189,8 @@ function registerCommands(_0) {
         description,
         description_localizations,
         default_member_permissions,
-        dm_permission,
+        contexts,
+        integration_types,
         options
       } = localCommand;
       const existingCommand = applicationCommands.cache.find((cmd) => cmd.name === name);
@@ -200,6 +208,9 @@ function registerCommands(_0) {
         if (areCommandsDifferent(existingCommand, localCommand)) {
           yield applicationCommands.edit(existingCommand.id, {
             description,
+            description_localizations,
+            name_localizations,
+            default_member_permissions,
             options
           });
           let message = `\u{1F501} Edited command "${name}".`;
@@ -225,7 +236,8 @@ function registerCommands(_0) {
           description,
           description_localizations,
           default_member_permissions,
-          dm_permission,
+          contexts,
+          integration_types,
           options
         });
         let message = `\u2705 Registered command "${name}".`;
@@ -265,21 +277,23 @@ var CommandHandler = class {
       );
     }
     if (this._commandsPath) {
-      this._commandsInit();
-      this._client.once("clientReady", () => {
+      this._client.once("clientReady", () => __async(this, null, function* () {
+        yield this._commandsInit();
         this._registerSlashCommands();
-        this._validationsPath && this._validationsInit();
+        this._validationsPath && (yield this._validationsInit());
         this._handleCommands();
         this._handleAutocomplete();
-      });
+      }));
     }
     if (this._eventsPath) {
       this._eventsInit();
     }
   }
   _commandsInit() {
-    let commands = buildCommandTree(this._commandsPath);
-    this._commands = commands;
+    return __async(this, null, function* () {
+      let commands = yield buildCommandTree(this._commandsPath);
+      this._commands = commands;
+    });
   }
   _registerSlashCommands() {
     registerCommands({
@@ -297,8 +311,10 @@ var CommandHandler = class {
       eventFuncPaths.sort();
       if (!eventName) continue;
       this._client.on(eventName, (...arg) => __async(this, null, function* () {
+        var _a;
         for (const eventFuncPath of eventFuncPaths) {
-          const eventFunc = require(eventFuncPath);
+          const imported = yield import((0, import_url2.pathToFileURL)(eventFuncPath).href);
+          const eventFunc = (_a = imported.default) != null ? _a : imported;
           const cantRunEvent = yield eventFunc(...arg, this._client, this);
           if (cantRunEvent) break;
         }
@@ -306,15 +322,19 @@ var CommandHandler = class {
     }
   }
   _validationsInit() {
-    const validationFilePaths = getFilePaths(this._validationsPath);
-    validationFilePaths.sort();
-    for (const validationFilePath of validationFilePaths) {
-      const validationFunc = require(validationFilePath);
-      if (typeof validationFunc !== "function") {
-        throw new Error(`Validation file ${validationFilePath} must export a function by default.`);
+    return __async(this, null, function* () {
+      var _a;
+      const validationFilePaths = getFilePaths(this._validationsPath);
+      validationFilePaths.sort();
+      for (const validationFilePath of validationFilePaths) {
+        const imported = yield import((0, import_url2.pathToFileURL)(validationFilePath).href);
+        const validationFunc = (_a = imported.default) != null ? _a : imported;
+        if (typeof validationFunc !== "function") {
+          throw new Error(`Validation file ${validationFilePath} must export a function by default.`);
+        }
+        this._validationFuncs.push(validationFunc);
       }
-      this._validationFuncs.push(validationFunc);
-    }
+    });
   }
   _handleCommands() {
     this._client.on("interactionCreate", (interaction) => __async(this, null, function* () {
