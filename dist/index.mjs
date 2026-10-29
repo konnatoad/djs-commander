@@ -90,9 +90,10 @@ function getFolderPaths(directory, nesting) {
 
 // src/utils/buildCommandTree.ts
 import { pathToFileURL } from "url";
+import { ApplicationCommandType } from "discord.js";
 function buildCommandTree(commandsDir) {
   return __async(this, null, function* () {
-    var _a;
+    var _a, _c;
     const commandTree = [];
     if (!commandsDir) return [];
     const commandFilePaths = getFilePaths(commandsDir, true);
@@ -103,7 +104,8 @@ function buildCommandTree(commandsDir) {
       if (!data) throw new Error(`File ${commandFilePath} must export "data".`);
       if (!run) throw new Error(`File ${commandFilePath} must export a "run" function.`);
       if (!data.name) throw new Error(`File ${commandFilePath} must have a command name.`);
-      if (!data.description) throw new Error(`File ${commandFilePath} must have a command description.`);
+      const isSlashCommand = ((_c = data.type) != null ? _c : ApplicationCommandType.ChatInput) === ApplicationCommandType.ChatInput;
+      if (isSlashCommand && !data.description) throw new Error(`File ${commandFilePath} must have a command description.`);
       try {
         data = data.toJSON();
       } catch (error) {
@@ -116,6 +118,9 @@ function buildCommandTree(commandsDir) {
     return commandTree;
   });
 }
+
+// src/utils/registerCommands.ts
+import { ApplicationCommandType as ApplicationCommandType2 } from "discord.js";
 
 // src/utils/getAppCommands.ts
 function getAppCommands(client, guildId) {
@@ -132,17 +137,42 @@ function getAppCommands(client, guildId) {
   });
 }
 
-// src/utils/areCommandsDifferent.ts
-function areCommandsDifferent(existingCommand, localCommand) {
-  var _a, _b;
-  if (localCommand.description !== existingCommand.description || (((_a = localCommand.options) == null ? void 0 : _a.length) || 0) !== ((_b = existingCommand.options) == null ? void 0 : _b.length)) {
-    return true;
-  } else {
-    return false;
-  }
-}
-
 // src/utils/registerCommands.ts
+var API_FIELDS = [
+  "type",
+  "name",
+  "name_localizations",
+  "description",
+  "description_localizations",
+  "options",
+  "default_member_permissions",
+  "nsfw",
+  "contexts",
+  "integration_types",
+  "handler"
+];
+function apiCommand(command) {
+  const api = {};
+  for (const field of API_FIELDS) {
+    if (command[field] !== void 0) api[field] = command[field];
+  }
+  return api;
+}
+var sameCommand = (existing, command) => {
+  var _a;
+  return existing.name === command.name && existing.type === ((_a = command.type) != null ? _a : ApplicationCommandType2.ChatInput);
+};
+function isUnchanged(existing, command) {
+  var _a, _b, _c;
+  return existing.equals(
+    __spreadProps(__spreadValues({}, command), {
+      nsfw: (_a = command.nsfw) != null ? _a : false,
+      contexts: (_b = command.contexts) != null ? _b : existing.contexts,
+      integration_types: (_c = command.integration_types) != null ? _c : existing.integrationTypes
+    }),
+    true
+  );
+}
 function registerCommands(_0) {
   return __async(this, arguments, function* ({
     client,
@@ -150,72 +180,29 @@ function registerCommands(_0) {
     testServer,
     logger
   }) {
-    const applicationCommands = yield getAppCommands(client, testServer);
-    for (const localCommand of localCommands) {
-      const {
-        name,
-        name_localizations,
-        description,
-        description_localizations,
-        default_member_permissions,
-        contexts,
-        integration_types,
-        options
-      } = localCommand;
-      const existingCommand = applicationCommands.cache.find((cmd) => cmd.name === name);
-      if (existingCommand) {
-        if (localCommand.deleted) {
-          yield applicationCommands.delete(existingCommand.id);
-          let message = `\u{1F5D1} Deleted command "${name}".`;
-          if (logger) {
-            logger.info(message);
-          } else {
-            console.log(message);
-          }
-          continue;
-        }
-        if (areCommandsDifferent(existingCommand, localCommand)) {
-          yield applicationCommands.edit(existingCommand.id, {
-            description,
-            description_localizations,
-            name_localizations,
-            default_member_permissions,
-            options
-          });
-          let message = `\u{1F501} Edited command "${name}".`;
-          if (logger) {
-            logger.info(message);
-          } else {
-            console.log(message);
-          }
-        }
-      } else {
-        if (localCommand.deleted) {
-          let message2 = `\u23E9 Skipping registering command "${name}" as it's set to delete.`;
-          if (logger) {
-            logger.info(message2);
-          } else {
-            console.log(message2);
-          }
-          continue;
-        }
-        yield applicationCommands.create({
-          name,
-          name_localizations,
-          description,
-          description_localizations,
-          default_member_permissions,
-          contexts,
-          integration_types,
-          options
-        });
-        let message = `\u2705 Registered command "${name}".`;
-        if (logger) {
-          logger.info(message);
-        } else {
-          console.log(message);
-        }
+    const log = logger != null ? logger : console;
+    try {
+      const applicationCommands = yield getAppCommands(client, testServer);
+      const existing = [...applicationCommands.cache.values()];
+      const commands = localCommands.filter((command) => !command.deleted).map(apiCommand);
+      const isLocal = (current) => commands.some((command) => sameCommand(current, command));
+      const changes = [];
+      for (const command of commands) {
+        const current = existing.find((candidate) => sameCommand(candidate, command));
+        if (!current) changes.push(`\u2705 Registered command "${command.name}".`);
+        else if (!isUnchanged(current, command)) changes.push(`\u{1F501} Edited command "${command.name}".`);
       }
+      const kept = existing.filter(
+        (current) => current.type === ApplicationCommandType2.PrimaryEntryPoint && !isLocal(current)
+      );
+      for (const current of existing) {
+        if (!kept.includes(current) && !isLocal(current)) changes.push(`\u{1F5D1} Removed command "${current.name}".`);
+      }
+      if (!changes.length) return;
+      yield applicationCommands.set([...commands, ...kept]);
+      for (const change of changes) log.info(change);
+    } catch (error) {
+      log.error(`Couldn't register commands: ${error}`);
     }
   });
 }

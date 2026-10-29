@@ -1,7 +1,25 @@
 // A stand-in for the discord.js Client: real events through EventEmitter, and an
 // application command manager that keeps what was registered in `registered`
-// and every call made to it in `calls`.
+// and every call made to it in `calls`. Registered commands are real discord.js
+// ApplicationCommands with the defaults Discord fills in, so comparing against
+// them works the way it does against Discord.
 const { EventEmitter } = require('node:events');
+const { ApplicationCommand, ApplicationCommandManager } = require('discord.js');
+
+/** A command the way Discord sends it back: with its defaults filled in. */
+function asDiscordHasIt(command, id) {
+  return {
+    id,
+    application_id: '1',
+    version: '1',
+    type: 1,
+    default_member_permissions: null,
+    nsfw: false,
+    contexts: null,
+    integration_types: [0],
+    ...Object.fromEntries(Object.entries(command).filter(([, value]) => value !== undefined)),
+  };
+}
 
 function fakeCommandManager(existing = []) {
   let nextId = 1;
@@ -9,7 +27,7 @@ function fakeCommandManager(existing = []) {
   const calls = [];
   const add = (command) => {
     const id = String(nextId++);
-    registered.set(id, { id, ...command });
+    registered.set(id, new ApplicationCommand({ options: {} }, asDiscordHasIt(command, id)));
     return registered.get(id);
   };
   for (const command of existing) add(command);
@@ -17,8 +35,9 @@ function fakeCommandManager(existing = []) {
   return {
     registered,
     calls,
+    cache: registered,
     names: () => [...registered.values()].map((command) => command.name).sort(),
-    cache: { find: (match) => [...registered.values()].find(match) },
+    find: (name) => [...registered.values()].find((command) => command.name === name),
     async fetch() {
       calls.push(['fetch']);
       return registered;
@@ -29,17 +48,23 @@ function fakeCommandManager(existing = []) {
     },
     async edit(id, command) {
       calls.push(['edit', registered.get(id).name]);
-      registered.set(id, { ...registered.get(id), ...command });
-      return registered.get(id);
+      registered.delete(id);
+      return add(command);
     },
     async delete(id) {
       calls.push(['delete', registered.get(id).name]);
       registered.delete(id);
     },
     async set(commands) {
-      calls.push(['set', commands.map((command) => command.name)]);
+      // the same conversion discord.js does before sending them
+      const sent = commands.map((command) => ApplicationCommandManager.transformCommand(command));
+      calls.push(['set', sent.map((command) => command.name)]);
+      if (this.failNextSet) {
+        this.failNextSet = false;
+        throw new Error('Missing Access');
+      }
       registered.clear();
-      return commands.map(add);
+      return sent.map(add);
     },
   };
 }

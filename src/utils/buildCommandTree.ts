@@ -1,4 +1,5 @@
 import { pathToFileURL } from 'url';
+import { ApplicationCommandType } from 'discord.js';
 import { getFilePaths } from './getPaths';
 
 export async function buildCommandTree(commandsDir?: string) {
@@ -15,7 +16,9 @@ export async function buildCommandTree(commandsDir?: string) {
     if (!data) throw new Error(`File ${commandFilePath} must export "data".`);
     if (!run) throw new Error(`File ${commandFilePath} must export a "run" function.`);
     if (!data.name) throw new Error(`File ${commandFilePath} must have a command name.`);
-    if (!data.description) throw new Error(`File ${commandFilePath} must have a command description.`);
+    // context menu commands (user and message) have no description
+    const isSlashCommand = (data.type ?? ApplicationCommandType.ChatInput) === ApplicationCommandType.ChatInput;
+    if (isSlashCommand && !data.description) throw new Error(`File ${commandFilePath} must have a command description.`);
 
     try {
       data = data.toJSON();
