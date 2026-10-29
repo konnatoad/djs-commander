@@ -84,6 +84,7 @@ __export(index_exports, {
 module.exports = __toCommonJS(index_exports);
 var import_path2 = __toESM(require("path"));
 var import_url2 = require("url");
+var import_discord3 = require("discord.js");
 
 // src/utils/getPaths.ts
 var import_fs = __toESM(require("fs"));
@@ -248,6 +249,8 @@ var CommandHandler = class {
     testServer,
     logger
   }) {
+    // keyed by type and name, since a context menu can share its name with a slash command
+    this._commandsByKey = /* @__PURE__ */ new Map();
     if (!client)
       throw new Error('Property "client" is required when instantiating CommandHandler.');
     this._client = client;
@@ -268,8 +271,7 @@ var CommandHandler = class {
         yield this._commandsInit();
         this._registerSlashCommands();
         this._validationsPath && (yield this._validationsInit());
-        this._handleCommands();
-        this._handleAutocomplete();
+        this._handleInteractions();
       }));
     }
     if (this._eventsPath) {
@@ -280,7 +282,12 @@ var CommandHandler = class {
     return __async(this, null, function* () {
       let commands = yield buildCommandTree(this._commandsPath);
       this._commands = commands;
+      this._commandsByKey = new Map(commands.map((command) => [commandKey(command.type, command.name), command]));
     });
+  }
+  get _log() {
+    var _a;
+    return (_a = this._logger) != null ? _a : console;
   }
   _registerSlashCommands() {
     registerCommands({
@@ -300,10 +307,14 @@ var CommandHandler = class {
       this._client.on(eventName, (...arg) => __async(this, null, function* () {
         var _a;
         for (const eventFuncPath of eventFuncPaths) {
-          const imported = yield import((0, import_url2.pathToFileURL)(eventFuncPath).href);
-          const eventFunc = (_a = imported.default) != null ? _a : imported;
-          const cantRunEvent = yield eventFunc(...arg, this._client, this);
-          if (cantRunEvent) break;
+          try {
+            const imported = yield import((0, import_url2.pathToFileURL)(eventFuncPath).href);
+            const eventFunc = (_a = imported.default) != null ? _a : imported;
+            const cantRunEvent = yield eventFunc(...arg, this._client, this);
+            if (cantRunEvent) break;
+          } catch (error) {
+            this._log.error(`Event "${eventName}" failed in ${import_path2.default.basename(eventFuncPath)}: ${describe(error)}`);
+          }
         }
       }));
     }
@@ -323,53 +334,47 @@ var CommandHandler = class {
       }
     });
   }
-  _handleCommands() {
+  // Slash commands, context menus and autocomplete. A command that throws is logged
+  // and nothing replies for it; replying is up to the command.
+  _handleInteractions() {
     this._client.on("interactionCreate", (interaction) => __async(this, null, function* () {
-      if (!interaction.isChatInputCommand()) return;
-      const command = this._commands.find((cmd) => cmd.name === interaction.commandName);
-      if (command) {
-        if (this._validationFuncs.length) {
-          let canRun = true;
-          for (const validationFunc of this._validationFuncs) {
-            const cantRunCommand = yield validationFunc(interaction, command, this, this._client);
-            if (cantRunCommand) {
-              canRun = false;
-              break;
-            }
-          }
-          if (canRun) {
-            yield command.run({
-              interaction,
-              client: this._client,
-              handler: this
-            });
-          }
-        } else {
-          yield command.run({
-            interaction,
-            client: this._client,
-            handler: this
-          });
+      var _a;
+      if (!interaction.isCommand() && !interaction.isAutocomplete()) return;
+      const command = this._commandsByKey.get(commandKey(interaction.commandType, interaction.commandName));
+      if (!command) return;
+      const context = { interaction, client: this._client, handler: this };
+      if (interaction.isAutocomplete()) {
+        try {
+          yield (_a = command.autocomplete) == null ? void 0 : _a.call(command, context);
+        } catch (error) {
+          this._log.error(`Autocomplete for "${command.name}" failed: ${describe(error)}`);
         }
+        return;
       }
-    }));
-  }
-  _handleAutocomplete() {
-    this._client.on("interactionCreate", (interaction) => __async(this, null, function* () {
-      if (!interaction.isAutocomplete()) return;
-      const command = this._commands.find((cmd) => cmd.name === interaction.commandName);
-      if (command == null ? void 0 : command.autocomplete) {
-        yield command.autocomplete({
-          interaction,
-          client: this._client,
-          handler: this
-        });
+      try {
+        for (const validationFunc of this._validationFuncs) {
+          const cantRunCommand = yield validationFunc(interaction, command, this, this._client);
+          if (cantRunCommand) return;
+        }
+      } catch (error) {
+        this._log.error(`A validation failed for "${command.name}", so it didn't run: ${describe(error)}`);
+        return;
+      }
+      try {
+        yield command.run(context);
+      } catch (error) {
+        this._log.error(`Command "${command.name}" failed: ${describe(error)}`);
       }
     }));
   }
   get commands() {
     return this._commands;
   }
+};
+var commandKey = (type, name) => `${type != null ? type : import_discord3.ApplicationCommandType.ChatInput}:${name}`;
+var describe = (error) => {
+  var _a;
+  return error instanceof Error ? (_a = error.stack) != null ? _a : error.message : String(error);
 };
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {

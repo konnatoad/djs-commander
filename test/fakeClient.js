@@ -88,15 +88,27 @@ function fakeLogger() {
 function chatInput(commandName, extra = {}) {
   return {
     commandName,
+    commandType: 1,
     calls: [],
+    isCommand: () => true,
     isChatInputCommand: () => true,
     isAutocomplete: () => false,
     ...extra,
   };
 }
 
-function autocomplete(commandName) {
-  return { ...chatInput(commandName), isChatInputCommand: () => false, isAutocomplete: () => true };
+/** A right-click User (type 2) or Message (type 3) app command. */
+function contextMenu(commandName, commandType, extra = {}) {
+  return { ...chatInput(commandName, extra), commandType, isChatInputCommand: () => false };
+}
+
+function autocomplete(commandName, extra = {}) {
+  return {
+    ...chatInput(commandName, extra),
+    isCommand: () => false,
+    isChatInputCommand: () => false,
+    isAutocomplete: () => true,
+  };
 }
 
 /** Waits until `ready()` is true; the handler sets itself up asynchronously after clientReady. */
@@ -108,4 +120,4 @@ async function until(ready, what) {
   }
 }
 
-module.exports = { fakeClient, fakeLogger, chatInput, autocomplete, until };
+module.exports = { fakeClient, fakeLogger, chatInput, contextMenu, autocomplete, until };
