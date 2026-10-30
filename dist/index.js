@@ -134,9 +134,8 @@ function buildCommandTree(commandsDir) {
     for (const commandFilePath of commandFilePaths) {
       const imported = yield import((0, import_url.pathToFileURL)(commandFilePath).href);
       const mod = (_a = imported.default) != null ? _a : imported;
-      let _b = mod, { data, run, deleted } = _b, rest = __objRest(_b, ["data", "run", "deleted"]);
+      let _b = mod, { data, run, subcommands, deleted } = _b, rest = __objRest(_b, ["data", "run", "subcommands", "deleted"]);
       if (!data) throw new Error(`File ${commandFilePath} must export "data".`);
-      if (!run) throw new Error(`File ${commandFilePath} must export a "run" function.`);
       if (!data.name) throw new Error(`File ${commandFilePath} must have a command name.`);
       const isSlashCommand = ((_c = data.type) != null ? _c : import_discord.ApplicationCommandType.ChatInput) === import_discord.ApplicationCommandType.ChatInput;
       if (isSlashCommand && !data.description) throw new Error(`File ${commandFilePath} must have a command description.`);
@@ -144,13 +143,59 @@ function buildCommandTree(commandsDir) {
         data = data.toJSON();
       } catch (error) {
       }
+      if (subcommands) {
+        if (run) throw new Error(`File ${commandFilePath} exports both "run" and "subcommands"; use one of them.`);
+        checkSubcommands(commandFilePath, data, subcommands);
+      } else if (!run) {
+        throw new Error(`File ${commandFilePath} must export a "run" function or "subcommands".`);
+      }
       commandTree.push(__spreadProps(__spreadValues(__spreadValues({}, data), rest), {
         deleted,
-        run
+        run,
+        subcommands
       }));
     }
     return commandTree;
   });
+}
+function subcommandsInData(data) {
+  var _a, _b;
+  const names = [];
+  for (const option of (_a = data.options) != null ? _a : []) {
+    if (option.type === import_discord.ApplicationCommandOptionType.Subcommand) names.push(option.name);
+    if (option.type === import_discord.ApplicationCommandOptionType.SubcommandGroup) {
+      for (const sub of (_b = option.options) != null ? _b : []) names.push(`${option.name} ${sub.name}`);
+    }
+  }
+  return names;
+}
+function subcommandsExported(commandFilePath, subcommands) {
+  const names = [];
+  for (const [name, value] of Object.entries(subcommands)) {
+    if (typeof value === "function") {
+      names.push(name);
+    } else if (value && typeof value === "object") {
+      for (const [sub, func] of Object.entries(value)) {
+        if (typeof func !== "function")
+          throw new Error(`File ${commandFilePath}: subcommands.${name}.${sub} must be a function.`);
+        names.push(`${name} ${sub}`);
+      }
+    } else {
+      throw new Error(`File ${commandFilePath}: subcommands.${name} must be a function or a group of functions.`);
+    }
+  }
+  return names;
+}
+function checkSubcommands(commandFilePath, data, subcommands) {
+  const inData = subcommandsInData(data);
+  const exported = subcommandsExported(commandFilePath, subcommands);
+  const problems = [
+    ...inData.filter((name) => !exported.includes(name)).map((name) => `"${name}" is in data but has no function`),
+    ...exported.filter((name) => !inData.includes(name)).map((name) => `"${name}" has a function but isn't in data`)
+  ];
+  if (problems.length) {
+    throw new Error(`File ${commandFilePath} has subcommands that don't match: ${problems.join("; ")}.`);
+  }
 }
 
 // src/utils/registerCommands.ts
@@ -378,10 +423,15 @@ var CommandHandler = class {
         this._log.error(`A validation failed for "${command.name}", so it didn't run: ${describe(error)}`);
         return;
       }
+      const { run, name } = commandRun(command, interaction);
+      if (!run) {
+        this._log.warn(`Nothing to run for "${name}", it isn't in the command file anymore.`);
+        return;
+      }
       try {
-        yield command.run(context);
+        yield run(context);
       } catch (error) {
-        this._log.error(`Command "${command.name}" failed: ${describe(error)}`);
+        this._log.error(`Command "${name}" failed: ${describe(error)}`);
       }
     }));
   }
@@ -389,6 +439,16 @@ var CommandHandler = class {
     return this._commands;
   }
 };
+function commandRun(command, interaction) {
+  var _a;
+  if (!command.subcommands) return { run: command.run, name: command.name };
+  const options = interaction.options;
+  const group = options.getSubcommandGroup(false);
+  const subcommand = options.getSubcommand(false);
+  const run = group ? (_a = command.subcommands[group]) == null ? void 0 : _a[subcommand != null ? subcommand : ""] : command.subcommands[subcommand != null ? subcommand : ""];
+  const name = [command.name, group, subcommand].filter(Boolean).join(" ");
+  return { run: typeof run === "function" ? run : void 0, name };
+}
 var commandKey = (type, name) => `${type != null ? type : import_discord3.ApplicationCommandType.ChatInput}:${name}`;
 var describe = (error) => {
   var _a;

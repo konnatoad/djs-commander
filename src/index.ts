@@ -1,6 +1,6 @@
 import path from 'path';
 import { pathToFileURL } from 'url';
-import { ApplicationCommandType, Client, CommandInteraction } from 'discord.js';
+import { ApplicationCommandType, ChatInputCommandInteraction, Client, CommandInteraction } from 'discord.js';
 import { Logger } from 'winston';
 import { LocalCommand } from './dev';
 import { getFolderPaths, getFilePaths } from './utils/getPaths';
@@ -172,10 +172,17 @@ export class CommandHandler {
         return;
       }
 
+      const { run, name } = commandRun(command, interaction);
+      if (!run) {
+        // Discord can still have an old subcommand for a moment after the files changed
+        this._log.warn(`Nothing to run for "${name}", it isn't in the command file anymore.`);
+        return;
+      }
+
       try {
-        await command.run(context);
+        await run(context);
       } catch (error) {
-        this._log.error(`Command "${command.name}" failed: ${describe(error)}`);
+        this._log.error(`Command "${name}" failed: ${describe(error)}`);
       }
     });
   }
@@ -183,6 +190,21 @@ export class CommandHandler {
   get commands() {
     return this._commands;
   }
+}
+
+/**
+ * The function to run for an interaction, and the name to log it under: `run`, or for a
+ * command that exports `subcommands`, the one for the subcommand (and group) that was used.
+ */
+function commandRun(command: LocalCommand, interaction: CommandInteraction) {
+  if (!command.subcommands) return { run: command.run, name: command.name };
+
+  const options = (interaction as ChatInputCommandInteraction).options;
+  const group = options.getSubcommandGroup(false);
+  const subcommand = options.getSubcommand(false);
+  const run = group ? command.subcommands[group]?.[subcommand ?? ''] : command.subcommands[subcommand ?? ''];
+  const name = [command.name, group, subcommand].filter(Boolean).join(' ');
+  return { run: typeof run === 'function' ? run : undefined, name };
 }
 
 const commandKey = (type: ApplicationCommandType | undefined, name: string) =>
