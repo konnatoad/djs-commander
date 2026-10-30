@@ -1,6 +1,12 @@
 import fs from 'fs';
 import path from 'path';
 
+// Files the handler imports. Type declarations, source maps, JSON and notes next to
+// them are left alone.
+const CODE_FILE = /\.(js|cjs|mjs|ts)$/;
+const isCodeFile = (name: string) => CODE_FILE.test(name) && !name.endsWith('.d.ts');
+
+/** Code files in `directory` (and its subfolders with `nesting`), sorted by path. */
 export function getFilePaths(directory?: string, nesting?: boolean): string[] {
   let filePaths: string[] = [];
   if (!directory) return filePaths;
@@ -10,7 +16,7 @@ export function getFilePaths(directory?: string, nesting?: boolean): string[] {
   for (const file of files) {
     const filePath = path.join(directory, file.name);
 
-    if (file.isFile()) {
+    if (file.isFile() && isCodeFile(file.name)) {
       filePaths.push(filePath);
     }
 
@@ -19,7 +25,8 @@ export function getFilePaths(directory?: string, nesting?: boolean): string[] {
     }
   }
 
-  return filePaths;
+  // readdir's order depends on the file system, so sort to load the same way everywhere
+  return filePaths.sort();
 }
 
 export function getFolderPaths(directory?: string, nesting?: boolean): string[] {
@@ -40,5 +47,5 @@ export function getFolderPaths(directory?: string, nesting?: boolean): string[] 
     }
   }
 
-  return folderPaths;
+  return folderPaths.sort();
 }

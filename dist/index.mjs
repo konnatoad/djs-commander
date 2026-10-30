@@ -58,20 +58,22 @@ import { ApplicationCommandType as ApplicationCommandType3 } from "discord.js";
 // src/utils/getPaths.ts
 import fs from "fs";
 import path from "path";
+var CODE_FILE = /\.(js|cjs|mjs|ts)$/;
+var isCodeFile = (name) => CODE_FILE.test(name) && !name.endsWith(".d.ts");
 function getFilePaths(directory, nesting) {
   let filePaths = [];
   if (!directory) return filePaths;
   const files = fs.readdirSync(directory, { withFileTypes: true });
   for (const file of files) {
     const filePath = path.join(directory, file.name);
-    if (file.isFile()) {
+    if (file.isFile() && isCodeFile(file.name)) {
       filePaths.push(filePath);
     }
     if (nesting && file.isDirectory()) {
       filePaths = [...filePaths, ...getFilePaths(filePath, true)];
     }
   }
-  return filePaths;
+  return filePaths.sort();
 }
 function getFolderPaths(directory, nesting) {
   let folderPaths = [];
@@ -86,7 +88,7 @@ function getFolderPaths(directory, nesting) {
       }
     }
   }
-  return folderPaths;
+  return folderPaths.sort();
 }
 
 // src/utils/buildCommandTree.ts
@@ -266,33 +268,49 @@ var CommandHandler = class {
       logger: this._logger
     });
   }
+  // The listeners go on right away, so an event fired before the files finish importing
+  // waits for them instead of being missed. Each file is imported once.
   _eventsInit() {
     const eventPaths = getFolderPaths(this._eventsPath);
     for (const eventPath of eventPaths) {
       const eventName = path2.basename(eventPath);
-      const eventFuncPaths = getFilePaths(eventPath, true);
-      eventFuncPaths.sort();
       if (!eventName) continue;
+      const eventFuncs = this._importEventFuncs(eventName, getFilePaths(eventPath, true));
       this._client.on(eventName, (...arg) => __async(this, null, function* () {
-        var _a;
-        for (const eventFuncPath of eventFuncPaths) {
+        for (const { file, eventFunc } of yield eventFuncs) {
           try {
-            const imported = yield import(pathToFileURL2(eventFuncPath).href);
-            const eventFunc = (_a = imported.default) != null ? _a : imported;
             const cantRunEvent = yield eventFunc(...arg, this._client, this);
             if (cantRunEvent) break;
           } catch (error) {
-            this._log.error(`Event "${eventName}" failed in ${path2.basename(eventFuncPath)}: ${describe(error)}`);
+            this._log.error(`Event "${eventName}" failed in ${file}: ${describe(error)}`);
           }
         }
       }));
     }
   }
+  // Never rejects: a file that doesn't import is logged once and left out.
+  _importEventFuncs(eventName, eventFuncPaths) {
+    return __async(this, null, function* () {
+      var _a;
+      const eventFuncs = [];
+      for (const eventFuncPath of eventFuncPaths) {
+        const file = path2.basename(eventFuncPath);
+        try {
+          const imported = yield import(pathToFileURL2(eventFuncPath).href);
+          const eventFunc = (_a = imported.default) != null ? _a : imported;
+          if (typeof eventFunc !== "function") throw new Error("it must export a function");
+          eventFuncs.push({ file, eventFunc });
+        } catch (error) {
+          this._log.error(`Event "${eventName}" file ${file} didn't load, so it won't run: ${describe(error)}`);
+        }
+      }
+      return eventFuncs;
+    });
+  }
   _validationsInit() {
     return __async(this, null, function* () {
       var _a;
       const validationFilePaths = getFilePaths(this._validationsPath);
-      validationFilePaths.sort();
       for (const validationFilePath of validationFilePaths) {
         const imported = yield import(pathToFileURL2(validationFilePath).href);
         const validationFunc = (_a = imported.default) != null ? _a : imported;

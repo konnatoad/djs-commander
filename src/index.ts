@@ -85,35 +85,52 @@ export class CommandHandler {
     });
   }
 
+  // The listeners go on right away, so an event fired before the files finish importing
+  // waits for them instead of being missed. Each file is imported once.
   _eventsInit() {
     const eventPaths = getFolderPaths(this._eventsPath);
 
     for (const eventPath of eventPaths) {
       const eventName = path.basename(eventPath);
-      const eventFuncPaths = getFilePaths(eventPath, true);
-      eventFuncPaths.sort();
-
       if (!eventName) continue;
 
+      const eventFuncs = this._importEventFuncs(eventName, getFilePaths(eventPath, true));
+
       this._client.on(eventName, async (...arg) => {
-        for (const eventFuncPath of eventFuncPaths) {
+        for (const { file, eventFunc } of await eventFuncs) {
           // one broken event file is logged and skipped; the ones after it still run
           try {
-            const imported = await import(pathToFileURL(eventFuncPath).href);
-            const eventFunc = imported.default ?? imported;
             const cantRunEvent = await eventFunc(...arg, this._client, this);
             if (cantRunEvent) break;
           } catch (error) {
-            this._log.error(`Event "${eventName}" failed in ${path.basename(eventFuncPath)}: ${describe(error)}`);
+            this._log.error(`Event "${eventName}" failed in ${file}: ${describe(error)}`);
           }
         }
       });
     }
   }
 
+  // Never rejects: a file that doesn't import is logged once and left out.
+  async _importEventFuncs(eventName: string, eventFuncPaths: string[]) {
+    const eventFuncs: Array<{ file: string; eventFunc: (...args: unknown[]) => unknown }> = [];
+
+    for (const eventFuncPath of eventFuncPaths) {
+      const file = path.basename(eventFuncPath);
+      try {
+        const imported = await import(pathToFileURL(eventFuncPath).href);
+        const eventFunc = imported.default ?? imported;
+        if (typeof eventFunc !== 'function') throw new Error('it must export a function');
+        eventFuncs.push({ file, eventFunc });
+      } catch (error) {
+        this._log.error(`Event "${eventName}" file ${file} didn't load, so it won't run: ${describe(error)}`);
+      }
+    }
+
+    return eventFuncs;
+  }
+
   async _validationsInit() {
     const validationFilePaths = getFilePaths(this._validationsPath);
-    validationFilePaths.sort();
 
     for (const validationFilePath of validationFilePaths) {
       const imported = await import(pathToFileURL(validationFilePath).href);
