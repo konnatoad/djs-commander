@@ -63,6 +63,24 @@ test('sends nothing when Discord already matches the files', async () => {
   assert.deepEqual(logger.lines, []);
 });
 
+test('a subcommand without options matches what Discord sends back for it', async () => {
+  // a builder gives `options: []` for it, and Discord leaves the field out
+  const quote = {
+    name: 'quote',
+    description: 'Quotes',
+    options: [
+      { type: 1, name: 'add', description: 'Add a quote', options: [{ type: 3, name: 'text', description: 'What' }] },
+      { type: 1, name: 'removeall', description: 'Remove all quotes', options: [] },
+    ],
+  };
+  const client = fakeClient();
+  await start(client, [quote]);
+  assert.equal(client.application.commands.find('quote').options[1].options, undefined);
+  const logger = await start(client, [quote]);
+  assert.equal(sets(client.application.commands).length, 1);
+  assert.deepEqual(logger.lines, []);
+});
+
 test('sends nothing on the next start after registering', async () => {
   const client = fakeClient();
   await start(client, [ping, warn]);

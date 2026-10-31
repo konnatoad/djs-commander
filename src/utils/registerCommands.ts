@@ -29,6 +29,15 @@ function apiCommand(command: LocalCommand) {
 const sameCommand = (existing: ApplicationCommand, command: Record<string, any>) =>
   existing.name === command.name && existing.type === (command.type ?? ApplicationCommandType.ChatInput);
 
+// Discord leaves out a subcommand's options when it has none, so a builder's
+// `options: []` has to count as no options at all.
+function withoutEmptyOptions(options?: Record<string, any>[]): Record<string, any>[] | undefined {
+  return options?.map(({ options: inner, ...option }) => {
+    const nested = withoutEmptyOptions(inner);
+    return nested?.length ? { ...option, options: nested } : option;
+  });
+}
+
 // Discord fills in nsfw, contexts and integration types when a command leaves them
 // out, so leaving one out can't count as a change. Option order is what people see
 // in the client, so reordering does count.
@@ -36,6 +45,7 @@ function isUnchanged(existing: ApplicationCommand, command: Record<string, any>)
   return existing.equals(
     {
       ...command,
+      options: withoutEmptyOptions(command.options),
       nsfw: command.nsfw ?? false,
       contexts: command.contexts ?? existing.contexts,
       integration_types: command.integration_types ?? existing.integrationTypes,

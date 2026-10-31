@@ -6,6 +6,14 @@
 const { EventEmitter } = require('node:events');
 const { ApplicationCommand, ApplicationCommandManager } = require('discord.js');
 
+/** Discord sends no `options` at all for a subcommand that has none. */
+function withoutEmptyOptions(options) {
+  return options?.map(({ options: inner, ...option }) => {
+    const nested = withoutEmptyOptions(inner);
+    return nested?.length ? { ...option, options: nested } : option;
+  });
+}
+
 /** A command the way Discord sends it back: with its defaults filled in. */
 function asDiscordHasIt(command, id) {
   return {
@@ -18,6 +26,7 @@ function asDiscordHasIt(command, id) {
     contexts: null,
     integration_types: [0],
     ...Object.fromEntries(Object.entries(command).filter(([, value]) => value !== undefined)),
+    ...(command.options && { options: withoutEmptyOptions(command.options) }),
   };
 }
 
