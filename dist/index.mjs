@@ -210,10 +210,18 @@ var sameCommand = (existing, command) => {
   var _a;
   return existing.name === command.name && existing.type === ((_a = command.type) != null ? _a : ApplicationCommandType2.ChatInput);
 };
+function withoutEmptyOptions(options) {
+  return options == null ? void 0 : options.map((_a) => {
+    var _b = _a, { options: inner } = _b, option = __objRest(_b, ["options"]);
+    const nested = withoutEmptyOptions(inner);
+    return (nested == null ? void 0 : nested.length) ? __spreadProps(__spreadValues({}, option), { options: nested }) : option;
+  });
+}
 function isUnchanged(existing, command) {
   var _a, _b, _c;
   return existing.equals(
     __spreadProps(__spreadValues({}, command), {
+      options: withoutEmptyOptions(command.options),
       nsfw: (_a = command.nsfw) != null ? _a : false,
       contexts: (_b = command.contexts) != null ? _b : existing.contexts,
       integration_types: (_c = command.integration_types) != null ? _c : existing.integrationTypes
