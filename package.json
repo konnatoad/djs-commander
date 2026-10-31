@@ -1,6 +1,6 @@
 {
   "name": "djs-commander",
-  "version": "0.1.7",
+  "version": "1.0.0",
   "description": "A command and event handler that works seamlessly with Discord.js",
   "types": "./dist/index.d.ts",
   "engines": {
@@ -21,9 +21,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/notunderctrl/djs-commander"
+    "url": "https://github.com/konnatoad/djs-commander"
   },
-  "homepage": "https://djs-commander.underctrl.io",
+  "homepage": "https://github.com/konnatoad/djs-commander#readme",
+  "bugs": "https://github.com/konnatoad/djs-commander/issues",
   "keywords": [
     "discord.js",
     "command",
