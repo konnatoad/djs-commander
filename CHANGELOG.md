@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 
+## 1.0.1 - 2026-10-31
+
+### Fixed
+
+- Subcommand without options no longer counts as a change
+
 ## 1.0.0 - 2026-10-31
 
 ### Breaking
