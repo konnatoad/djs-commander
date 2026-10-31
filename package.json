@@ -2,19 +2,19 @@
   "name": "djs-commander",
   "version": "0.1.7",
   "description": "A command and event handler that works seamlessly with Discord.js",
-  "types": "./index.d.ts",
+  "types": "./dist/index.d.ts",
   "engines": {
     "node": ">=18.0.0"
   },
   "exports": {
     ".": {
-      "types": "./index.d.ts",
+      "types": "./dist/index.d.ts",
       "require": "./dist/index.js",
       "import": "./dist/index.mjs"
     }
   },
   "scripts": {
-    "build": "rm -rf dist && tsup src/index.ts --format cjs,esm --clean",
+    "build": "rm -rf dist && tsup src/index.ts --format cjs,esm --clean && tsc",
     "watch": "yarn build --watch src",
     "test": "node --test test/",
     "prepublishOnly": "yarn build"
@@ -32,19 +32,12 @@
     "validations"
   ],
   "peerDependencies": {
-    "discord.js": "^14.0.0",
-    "winston": "^3.0.0"
-  },
-  "peerDependenciesMeta": {
-    "winston": {
-      "optional": true
-    }
+    "discord.js": "^14.0.0"
   },
   "devDependencies": {
     "discord.js": "^14.26.4",
     "tsup": "^8.5.1",
-    "typescript": "^7.0.2",
-    "winston": "^3.19.0"
+    "typescript": "^7.0.2"
   },
   "resolutions": {
     "esbuild": "0.28.1"

@@ -288,14 +288,7 @@ function registerCommands(_0) {
 
 // src/index.ts
 var CommandHandler = class {
-  constructor({
-    client,
-    commandsPath,
-    eventsPath,
-    validationsPath,
-    testServer,
-    logger
-  }) {
+  constructor({ client, commandsPath, eventsPath, validationsPath, testServer, logger }) {
     // keyed by type and name, since a context menu can share its name with a slash command
     this._commandsByKey = /* @__PURE__ */ new Map();
     if (!client)
@@ -405,10 +398,9 @@ var CommandHandler = class {
       if (!interaction.isCommand() && !interaction.isAutocomplete()) return;
       const command = this._commandsByKey.get(commandKey(interaction.commandType, interaction.commandName));
       if (!command) return;
-      const context = { interaction, client: this._client, handler: this };
       if (interaction.isAutocomplete()) {
         try {
-          yield (_a = command.autocomplete) == null ? void 0 : _a.call(command, context);
+          yield (_a = command.autocomplete) == null ? void 0 : _a.call(command, { interaction, client: this._client, handler: this });
         } catch (error) {
           this._log.error(`Autocomplete for "${command.name}" failed: ${describe(error)}`);
         }
@@ -429,7 +421,7 @@ var CommandHandler = class {
         return;
       }
       try {
-        yield run(context);
+        yield run({ interaction, client: this._client, handler: this });
       } catch (error) {
         this._log.error(`Command "${name}" failed: ${describe(error)}`);
       }
@@ -441,13 +433,21 @@ var CommandHandler = class {
 };
 function commandRun(command, interaction) {
   var _a;
-  if (!command.subcommands) return { run: command.run, name: command.name };
+  const subcommands = command.subcommands;
+  if (!subcommands) return { run: command.run, name: command.name };
   const options = interaction.options;
   const group = options.getSubcommandGroup(false);
-  const subcommand = options.getSubcommand(false);
-  const run = group ? (_a = command.subcommands[group]) == null ? void 0 : _a[subcommand != null ? subcommand : ""] : command.subcommands[subcommand != null ? subcommand : ""];
+  const subcommand = (_a = options.getSubcommand(false)) != null ? _a : "";
+  let run;
+  if (group) {
+    const inGroup = subcommands[group];
+    run = typeof inGroup === "object" ? inGroup[subcommand] : void 0;
+  } else {
+    const found = subcommands[subcommand];
+    run = typeof found === "function" ? found : void 0;
+  }
   const name = [command.name, group, subcommand].filter(Boolean).join(" ");
-  return { run: typeof run === "function" ? run : void 0, name };
+  return { run, name };
 }
 var commandKey = (type, name) => `${type != null ? type : import_discord3.ApplicationCommandType.ChatInput}:${name}`;
 var describe = (error) => {

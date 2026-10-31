@@ -1,11 +1,21 @@
 import path from 'path';
 import { pathToFileURL } from 'url';
 import { ApplicationCommandType, ChatInputCommandInteraction, Client, CommandInteraction } from 'discord.js';
-import { Logger } from 'winston';
-import { LocalCommand } from './dev';
+import type { CommandHandlerOptions, LocalCommand, Logger, RunFunction, Validation } from './types';
 import { getFolderPaths, getFilePaths } from './utils/getPaths';
 import { buildCommandTree } from './utils/buildCommandTree';
 import { registerCommands } from './utils/registerCommands';
+
+export type {
+  CommandHandlerOptions,
+  CommandModule,
+  LocalCommand,
+  Logger,
+  RunContext,
+  RunFunction,
+  Subcommands,
+  Validation,
+} from './types';
 
 export class CommandHandler {
   private readonly _client: Client;
@@ -13,27 +23,13 @@ export class CommandHandler {
   private readonly _eventsPath: string | undefined;
   private readonly _validationsPath: string | undefined;
   private readonly _testServer: string | undefined;
-  private readonly _validationFuncs: Array<(interaction: CommandInteraction, command: LocalCommand, handler: CommandHandler, client: Client) => unknown>;
+  private readonly _validationFuncs: Validation[];
   private readonly _logger: Logger | undefined;
   private _commands: Array<LocalCommand>;
   // keyed by type and name, since a context menu can share its name with a slash command
   private _commandsByKey = new Map<string, LocalCommand>();
 
-  constructor({
-    client,
-    commandsPath,
-    eventsPath,
-    validationsPath,
-    testServer,
-    logger,
-  }: {
-    client: Client;
-    commandsPath?: string;
-    eventsPath?: string;
-    validationsPath?: string;
-    testServer?: string;
-    logger?: Logger;
-  }) {
+  constructor({ client, commandsPath, eventsPath, validationsPath, testServer, logger }: CommandHandlerOptions) {
     if (!client)
       throw new Error('Property "client" is required when instantiating CommandHandler.');
 
@@ -151,11 +147,9 @@ export class CommandHandler {
 
       const command = this._commandsByKey.get(commandKey(interaction.commandType, interaction.commandName));
       if (!command) return;
-      const context = { interaction, client: this._client, handler: this };
-
       if (interaction.isAutocomplete()) {
         try {
-          await command.autocomplete?.(context);
+          await command.autocomplete?.({ interaction, client: this._client, handler: this });
         } catch (error) {
           this._log.error(`Autocomplete for "${command.name}" failed: ${describe(error)}`);
         }
@@ -180,7 +174,7 @@ export class CommandHandler {
       }
 
       try {
-        await run(context);
+        await run({ interaction, client: this._client, handler: this });
       } catch (error) {
         this._log.error(`Command "${name}" failed: ${describe(error)}`);
       }
@@ -197,14 +191,22 @@ export class CommandHandler {
  * command that exports `subcommands`, the one for the subcommand (and group) that was used.
  */
 function commandRun(command: LocalCommand, interaction: CommandInteraction) {
-  if (!command.subcommands) return { run: command.run, name: command.name };
+  const subcommands = command.subcommands;
+  if (!subcommands) return { run: command.run, name: command.name };
 
   const options = (interaction as ChatInputCommandInteraction).options;
   const group = options.getSubcommandGroup(false);
-  const subcommand = options.getSubcommand(false);
-  const run = group ? command.subcommands[group]?.[subcommand ?? ''] : command.subcommands[subcommand ?? ''];
+  const subcommand = options.getSubcommand(false) ?? '';
+  let run: RunFunction<any> | undefined;
+  if (group) {
+    const inGroup = subcommands[group];
+    run = typeof inGroup === 'object' ? inGroup[subcommand] : undefined;
+  } else {
+    const found = subcommands[subcommand];
+    run = typeof found === 'function' ? found : undefined;
+  }
   const name = [command.name, group, subcommand].filter(Boolean).join(' ');
-  return { run: typeof run === 'function' ? run : undefined, name };
+  return { run, name };
 }
 
 const commandKey = (type: ApplicationCommandType | undefined, name: string) =>

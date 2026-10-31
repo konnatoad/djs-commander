@@ -1,6 +1,5 @@
 import { ApplicationCommand, ApplicationCommandType, Client } from 'discord.js';
-import { Logger } from 'winston';
-import { LocalCommand } from '../dev';
+import type { LocalCommand, Logger } from '../types';
 import { getAppCommands } from './getAppCommands';
 
 // What Discord stores for a command; the rest of a command file's export (run,
