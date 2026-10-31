@@ -53,24 +53,27 @@ var __async = (__this, __arguments, generator) => {
 // src/index.ts
 import path2 from "path";
 import { pathToFileURL as pathToFileURL2 } from "url";
+import { ApplicationCommandType as ApplicationCommandType3 } from "discord.js";
 
 // src/utils/getPaths.ts
 import fs from "fs";
 import path from "path";
+var CODE_FILE = /\.(js|cjs|mjs|ts)$/;
+var isCodeFile = (name) => CODE_FILE.test(name) && !name.endsWith(".d.ts");
 function getFilePaths(directory, nesting) {
   let filePaths = [];
   if (!directory) return filePaths;
   const files = fs.readdirSync(directory, { withFileTypes: true });
   for (const file of files) {
     const filePath = path.join(directory, file.name);
-    if (file.isFile()) {
+    if (file.isFile() && isCodeFile(file.name)) {
       filePaths.push(filePath);
     }
     if (nesting && file.isDirectory()) {
       filePaths = [...filePaths, ...getFilePaths(filePath, true)];
     }
   }
-  return filePaths;
+  return filePaths.sort();
 }
 function getFolderPaths(directory, nesting) {
   let folderPaths = [];
@@ -85,37 +88,87 @@ function getFolderPaths(directory, nesting) {
       }
     }
   }
-  return folderPaths;
+  return folderPaths.sort();
 }
 
 // src/utils/buildCommandTree.ts
 import { pathToFileURL } from "url";
+import { ApplicationCommandOptionType, ApplicationCommandType } from "discord.js";
 function buildCommandTree(commandsDir) {
   return __async(this, null, function* () {
-    var _a;
+    var _a, _c;
     const commandTree = [];
     if (!commandsDir) return [];
     const commandFilePaths = getFilePaths(commandsDir, true);
     for (const commandFilePath of commandFilePaths) {
       const imported = yield import(pathToFileURL(commandFilePath).href);
       const mod = (_a = imported.default) != null ? _a : imported;
-      let _b = mod, { data, run, deleted } = _b, rest = __objRest(_b, ["data", "run", "deleted"]);
+      let _b = mod, { data, run, subcommands, deleted } = _b, rest = __objRest(_b, ["data", "run", "subcommands", "deleted"]);
       if (!data) throw new Error(`File ${commandFilePath} must export "data".`);
-      if (!run) throw new Error(`File ${commandFilePath} must export a "run" function.`);
       if (!data.name) throw new Error(`File ${commandFilePath} must have a command name.`);
-      if (!data.description) throw new Error(`File ${commandFilePath} must have a command description.`);
+      const isSlashCommand = ((_c = data.type) != null ? _c : ApplicationCommandType.ChatInput) === ApplicationCommandType.ChatInput;
+      if (isSlashCommand && !data.description) throw new Error(`File ${commandFilePath} must have a command description.`);
       try {
         data = data.toJSON();
       } catch (error) {
       }
+      if (subcommands) {
+        if (run) throw new Error(`File ${commandFilePath} exports both "run" and "subcommands"; use one of them.`);
+        checkSubcommands(commandFilePath, data, subcommands);
+      } else if (!run) {
+        throw new Error(`File ${commandFilePath} must export a "run" function or "subcommands".`);
+      }
       commandTree.push(__spreadProps(__spreadValues(__spreadValues({}, data), rest), {
         deleted,
-        run
+        run,
+        subcommands
       }));
     }
     return commandTree;
   });
 }
+function subcommandsInData(data) {
+  var _a, _b;
+  const names = [];
+  for (const option of (_a = data.options) != null ? _a : []) {
+    if (option.type === ApplicationCommandOptionType.Subcommand) names.push(option.name);
+    if (option.type === ApplicationCommandOptionType.SubcommandGroup) {
+      for (const sub of (_b = option.options) != null ? _b : []) names.push(`${option.name} ${sub.name}`);
+    }
+  }
+  return names;
+}
+function subcommandsExported(commandFilePath, subcommands) {
+  const names = [];
+  for (const [name, value] of Object.entries(subcommands)) {
+    if (typeof value === "function") {
+      names.push(name);
+    } else if (value && typeof value === "object") {
+      for (const [sub, func] of Object.entries(value)) {
+        if (typeof func !== "function")
+          throw new Error(`File ${commandFilePath}: subcommands.${name}.${sub} must be a function.`);
+        names.push(`${name} ${sub}`);
+      }
+    } else {
+      throw new Error(`File ${commandFilePath}: subcommands.${name} must be a function or a group of functions.`);
+    }
+  }
+  return names;
+}
+function checkSubcommands(commandFilePath, data, subcommands) {
+  const inData = subcommandsInData(data);
+  const exported = subcommandsExported(commandFilePath, subcommands);
+  const problems = [
+    ...inData.filter((name) => !exported.includes(name)).map((name) => `"${name}" is in data but has no function`),
+    ...exported.filter((name) => !inData.includes(name)).map((name) => `"${name}" has a function but isn't in data`)
+  ];
+  if (problems.length) {
+    throw new Error(`File ${commandFilePath} has subcommands that don't match: ${problems.join("; ")}.`);
+  }
+}
+
+// src/utils/registerCommands.ts
+import { ApplicationCommandType as ApplicationCommandType2 } from "discord.js";
 
 // src/utils/getAppCommands.ts
 function getAppCommands(client, guildId) {
@@ -132,17 +185,42 @@ function getAppCommands(client, guildId) {
   });
 }
 
-// src/utils/areCommandsDifferent.ts
-function areCommandsDifferent(existingCommand, localCommand) {
-  var _a, _b;
-  if (localCommand.description !== existingCommand.description || (((_a = localCommand.options) == null ? void 0 : _a.length) || 0) !== ((_b = existingCommand.options) == null ? void 0 : _b.length)) {
-    return true;
-  } else {
-    return false;
-  }
-}
-
 // src/utils/registerCommands.ts
+var API_FIELDS = [
+  "type",
+  "name",
+  "name_localizations",
+  "description",
+  "description_localizations",
+  "options",
+  "default_member_permissions",
+  "nsfw",
+  "contexts",
+  "integration_types",
+  "handler"
+];
+function apiCommand(command) {
+  const api = {};
+  for (const field of API_FIELDS) {
+    if (command[field] !== void 0) api[field] = command[field];
+  }
+  return api;
+}
+var sameCommand = (existing, command) => {
+  var _a;
+  return existing.name === command.name && existing.type === ((_a = command.type) != null ? _a : ApplicationCommandType2.ChatInput);
+};
+function isUnchanged(existing, command) {
+  var _a, _b, _c;
+  return existing.equals(
+    __spreadProps(__spreadValues({}, command), {
+      nsfw: (_a = command.nsfw) != null ? _a : false,
+      contexts: (_b = command.contexts) != null ? _b : existing.contexts,
+      integration_types: (_c = command.integration_types) != null ? _c : existing.integrationTypes
+    }),
+    true
+  );
+}
 function registerCommands(_0) {
   return __async(this, arguments, function* ({
     client,
@@ -150,86 +228,38 @@ function registerCommands(_0) {
     testServer,
     logger
   }) {
-    const applicationCommands = yield getAppCommands(client, testServer);
-    for (const localCommand of localCommands) {
-      const {
-        name,
-        name_localizations,
-        description,
-        description_localizations,
-        default_member_permissions,
-        contexts,
-        integration_types,
-        options
-      } = localCommand;
-      const existingCommand = applicationCommands.cache.find((cmd) => cmd.name === name);
-      if (existingCommand) {
-        if (localCommand.deleted) {
-          yield applicationCommands.delete(existingCommand.id);
-          let message = `\u{1F5D1} Deleted command "${name}".`;
-          if (logger) {
-            logger.info(message);
-          } else {
-            console.log(message);
-          }
-          continue;
-        }
-        if (areCommandsDifferent(existingCommand, localCommand)) {
-          yield applicationCommands.edit(existingCommand.id, {
-            description,
-            description_localizations,
-            name_localizations,
-            default_member_permissions,
-            options
-          });
-          let message = `\u{1F501} Edited command "${name}".`;
-          if (logger) {
-            logger.info(message);
-          } else {
-            console.log(message);
-          }
-        }
-      } else {
-        if (localCommand.deleted) {
-          let message2 = `\u23E9 Skipping registering command "${name}" as it's set to delete.`;
-          if (logger) {
-            logger.info(message2);
-          } else {
-            console.log(message2);
-          }
-          continue;
-        }
-        yield applicationCommands.create({
-          name,
-          name_localizations,
-          description,
-          description_localizations,
-          default_member_permissions,
-          contexts,
-          integration_types,
-          options
-        });
-        let message = `\u2705 Registered command "${name}".`;
-        if (logger) {
-          logger.info(message);
-        } else {
-          console.log(message);
-        }
+    const log = logger != null ? logger : console;
+    try {
+      const applicationCommands = yield getAppCommands(client, testServer);
+      const existing = [...applicationCommands.cache.values()];
+      const commands = localCommands.filter((command) => !command.deleted).map(apiCommand);
+      const isLocal = (current) => commands.some((command) => sameCommand(current, command));
+      const changes = [];
+      for (const command of commands) {
+        const current = existing.find((candidate) => sameCommand(candidate, command));
+        if (!current) changes.push(`\u2705 Registered command "${command.name}".`);
+        else if (!isUnchanged(current, command)) changes.push(`\u{1F501} Edited command "${command.name}".`);
       }
+      const kept = existing.filter(
+        (current) => current.type === ApplicationCommandType2.PrimaryEntryPoint && !isLocal(current)
+      );
+      for (const current of existing) {
+        if (!kept.includes(current) && !isLocal(current)) changes.push(`\u{1F5D1} Removed command "${current.name}".`);
+      }
+      if (!changes.length) return;
+      yield applicationCommands.set([...commands, ...kept]);
+      for (const change of changes) log.info(change);
+    } catch (error) {
+      log.error(`Couldn't register commands: ${error}`);
     }
   });
 }
 
 // src/index.ts
 var CommandHandler = class {
-  constructor({
-    client,
-    commandsPath,
-    eventsPath,
-    validationsPath,
-    testServer,
-    logger
-  }) {
+  constructor({ client, commandsPath, eventsPath, validationsPath, testServer, logger }) {
+    // keyed by type and name, since a context menu can share its name with a slash command
+    this._commandsByKey = /* @__PURE__ */ new Map();
     if (!client)
       throw new Error('Property "client" is required when instantiating CommandHandler.');
     this._client = client;
@@ -250,8 +280,7 @@ var CommandHandler = class {
         yield this._commandsInit();
         this._registerSlashCommands();
         this._validationsPath && (yield this._validationsInit());
-        this._handleCommands();
-        this._handleAutocomplete();
+        this._handleInteractions();
       }));
     }
     if (this._eventsPath) {
@@ -262,7 +291,12 @@ var CommandHandler = class {
     return __async(this, null, function* () {
       let commands = yield buildCommandTree(this._commandsPath);
       this._commands = commands;
+      this._commandsByKey = new Map(commands.map((command) => [commandKey(command.type, command.name), command]));
     });
+  }
+  get _log() {
+    var _a;
+    return (_a = this._logger) != null ? _a : console;
   }
   _registerSlashCommands() {
     registerCommands({
@@ -272,29 +306,49 @@ var CommandHandler = class {
       logger: this._logger
     });
   }
+  // The listeners go on right away, so an event fired before the files finish importing
+  // waits for them instead of being missed. Each file is imported once.
   _eventsInit() {
     const eventPaths = getFolderPaths(this._eventsPath);
     for (const eventPath of eventPaths) {
       const eventName = path2.basename(eventPath);
-      const eventFuncPaths = getFilePaths(eventPath, true);
-      eventFuncPaths.sort();
       if (!eventName) continue;
+      const eventFuncs = this._importEventFuncs(eventName, getFilePaths(eventPath, true));
       this._client.on(eventName, (...arg) => __async(this, null, function* () {
-        var _a;
-        for (const eventFuncPath of eventFuncPaths) {
-          const imported = yield import(pathToFileURL2(eventFuncPath).href);
-          const eventFunc = (_a = imported.default) != null ? _a : imported;
-          const cantRunEvent = yield eventFunc(...arg, this._client, this);
-          if (cantRunEvent) break;
+        for (const { file, eventFunc } of yield eventFuncs) {
+          try {
+            const cantRunEvent = yield eventFunc(...arg, this._client, this);
+            if (cantRunEvent) break;
+          } catch (error) {
+            this._log.error(`Event "${eventName}" failed in ${file}: ${describe(error)}`);
+          }
         }
       }));
     }
+  }
+  // Never rejects: a file that doesn't import is logged once and left out.
+  _importEventFuncs(eventName, eventFuncPaths) {
+    return __async(this, null, function* () {
+      var _a;
+      const eventFuncs = [];
+      for (const eventFuncPath of eventFuncPaths) {
+        const file = path2.basename(eventFuncPath);
+        try {
+          const imported = yield import(pathToFileURL2(eventFuncPath).href);
+          const eventFunc = (_a = imported.default) != null ? _a : imported;
+          if (typeof eventFunc !== "function") throw new Error("it must export a function");
+          eventFuncs.push({ file, eventFunc });
+        } catch (error) {
+          this._log.error(`Event "${eventName}" file ${file} didn't load, so it won't run: ${describe(error)}`);
+        }
+      }
+      return eventFuncs;
+    });
   }
   _validationsInit() {
     return __async(this, null, function* () {
       var _a;
       const validationFilePaths = getFilePaths(this._validationsPath);
-      validationFilePaths.sort();
       for (const validationFilePath of validationFilePaths) {
         const imported = yield import(pathToFileURL2(validationFilePath).href);
         const validationFunc = (_a = imported.default) != null ? _a : imported;
@@ -305,53 +359,69 @@ var CommandHandler = class {
       }
     });
   }
-  _handleCommands() {
+  // Slash commands, context menus and autocomplete. A command that throws is logged
+  // and nothing replies for it; replying is up to the command.
+  _handleInteractions() {
     this._client.on("interactionCreate", (interaction) => __async(this, null, function* () {
-      if (!interaction.isChatInputCommand()) return;
-      const command = this._commands.find((cmd) => cmd.name === interaction.commandName);
-      if (command) {
-        if (this._validationFuncs.length) {
-          let canRun = true;
-          for (const validationFunc of this._validationFuncs) {
-            const cantRunCommand = yield validationFunc(interaction, command, this, this._client);
-            if (cantRunCommand) {
-              canRun = false;
-              break;
-            }
-          }
-          if (canRun) {
-            yield command.run({
-              interaction,
-              client: this._client,
-              handler: this
-            });
-          }
-        } else {
-          yield command.run({
-            interaction,
-            client: this._client,
-            handler: this
-          });
+      var _a;
+      if (!interaction.isCommand() && !interaction.isAutocomplete()) return;
+      const command = this._commandsByKey.get(commandKey(interaction.commandType, interaction.commandName));
+      if (!command) return;
+      if (interaction.isAutocomplete()) {
+        try {
+          yield (_a = command.autocomplete) == null ? void 0 : _a.call(command, { interaction, client: this._client, handler: this });
+        } catch (error) {
+          this._log.error(`Autocomplete for "${command.name}" failed: ${describe(error)}`);
         }
+        return;
       }
-    }));
-  }
-  _handleAutocomplete() {
-    this._client.on("interactionCreate", (interaction) => __async(this, null, function* () {
-      if (!interaction.isAutocomplete()) return;
-      const command = this._commands.find((cmd) => cmd.name === interaction.commandName);
-      if (command == null ? void 0 : command.autocomplete) {
-        yield command.autocomplete({
-          interaction,
-          client: this._client,
-          handler: this
-        });
+      try {
+        for (const validationFunc of this._validationFuncs) {
+          const cantRunCommand = yield validationFunc(interaction, command, this, this._client);
+          if (cantRunCommand) return;
+        }
+      } catch (error) {
+        this._log.error(`A validation failed for "${command.name}", so it didn't run: ${describe(error)}`);
+        return;
+      }
+      const { run, name } = commandRun(command, interaction);
+      if (!run) {
+        this._log.warn(`Nothing to run for "${name}", it isn't in the command file anymore.`);
+        return;
+      }
+      try {
+        yield run({ interaction, client: this._client, handler: this });
+      } catch (error) {
+        this._log.error(`Command "${name}" failed: ${describe(error)}`);
       }
     }));
   }
   get commands() {
     return this._commands;
   }
+};
+function commandRun(command, interaction) {
+  var _a;
+  const subcommands = command.subcommands;
+  if (!subcommands) return { run: command.run, name: command.name };
+  const options = interaction.options;
+  const group = options.getSubcommandGroup(false);
+  const subcommand = (_a = options.getSubcommand(false)) != null ? _a : "";
+  let run;
+  if (group) {
+    const inGroup = subcommands[group];
+    run = typeof inGroup === "object" ? inGroup[subcommand] : void 0;
+  } else {
+    const found = subcommands[subcommand];
+    run = typeof found === "function" ? found : void 0;
+  }
+  const name = [command.name, group, subcommand].filter(Boolean).join(" ");
+  return { run, name };
+}
+var commandKey = (type, name) => `${type != null ? type : ApplicationCommandType3.ChatInput}:${name}`;
+var describe = (error) => {
+  var _a;
+  return error instanceof Error ? (_a = error.stack) != null ? _a : error.message : String(error);
 };
 export {
   CommandHandler

@@ -4,6 +4,35 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 
+## 1.0.0 - 2026-10-31
+
+### Breaking
+
+- Registration in one bulk overwrite, and commands with no file are removed from discord including ones made some other way. deleted: true still works
+- Only .js, .cjs, .mjs, and .ts files are loaded (not .d.ts), sorted by path.
+- logger is any {info, warn, error}, and winston is no longer a peer dependency, types moved from the hand-written index to build dist/*.d.ts
+- Errors from run, validations, autocomplete and event files are logged instead of becoming unhandled rejections.
+- Command file with both run and subcommands, or with subcommands that don't match data, stops startup and names the file.
+
+### Added
+
+- The subcommands export: flat or grouped, checked against data at startup
+- Context menu commands (user and message) run, and don't need a desc
+- Exported types: CommandModule, RunContext, RunFunction, Subcommands, Validation, Logger, CommandHandlerOptions, LocalCommand
+- Registration logs registered, edited and removed per command, and sends nothing when Discord already matches
+
+### Changed
+
+- One interactionCreate listener, which looks commands up by the type and name
+- Event files are imported once, at startup. File that fails to import is logged and left out and file that throws doesn't stop the ones after it
+- Activity entry point commands are kept during the overwrite
+
+### Fixed
+
+- Changes inside subcommands, options, permissions, contexts and nsfw now reach Discord
+- Registration is awaited, and a failure is logged
+- Event files are no longer imported again on every event
+
 ## [0.0.50] - 2023-06-11
 
 ### Changed
@@ -27,7 +56,7 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/)
 
 ### Added
 
-- Add winston logger | Feature credit: (Lenme-exe)[https://github.com/Lenme-exe] [#6](https://github.com/notunderctrl/djs-commander/pull/6)
+- Add winston logger | Feature credit: [Lenme-exe](https://github.com/Lenme-exe) [#6](https://github.com/notunderctrl/djs-commander/pull/6)
 
 ### Changed
 
