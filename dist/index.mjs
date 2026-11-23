@@ -110,7 +110,7 @@ function buildCommandTree(commandsDir) {
       if (isSlashCommand && !data.description) throw new Error(`File ${commandFilePath} must have a command description.`);
       try {
         data = data.toJSON();
-      } catch (error) {
+      } catch (e) {
       }
       if (subcommands) {
         if (run) throw new Error(`File ${commandFilePath} exports both "run" and "subcommands"; use one of them.`);
@@ -178,7 +178,7 @@ function getAppCommands(client, guildId) {
       const guild = yield client.guilds.fetch(guildId);
       applicationCommands = guild.commands;
     } else {
-      applicationCommands = yield client.application.commands;
+      applicationCommands = client.application.commands;
     }
     yield applicationCommands.fetch();
     return applicationCommands;
@@ -297,7 +297,7 @@ var CommandHandler = class {
   }
   _commandsInit() {
     return __async(this, null, function* () {
-      let commands = yield buildCommandTree(this._commandsPath);
+      const commands = yield buildCommandTree(this._commandsPath);
       this._commands = commands;
       this._commandsByKey = new Map(commands.map((command) => [commandKey(command.type, command.name), command]));
     });

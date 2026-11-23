@@ -21,7 +21,9 @@ export async function buildCommandTree(commandsDir?: string) {
 
     try {
       data = data.toJSON();
-    } catch (error) {}
+    } catch {
+      // keep the original data if it can't be serialized
+    }
 
     if (subcommands) {
       if (run) throw new Error(`File ${commandFilePath} exports both "run" and "subcommands"; use one of them.`);
