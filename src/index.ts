@@ -63,7 +63,7 @@ export class CommandHandler {
   }
 
   async _commandsInit() {
-    let commands = await buildCommandTree(this._commandsPath);
+    const commands = await buildCommandTree(this._commandsPath);
     this._commands = commands;
     this._commandsByKey = new Map(commands.map((command) => [commandKey(command.type, command.name), command]));
   }
